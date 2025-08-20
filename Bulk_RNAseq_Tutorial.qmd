@@ -1,0 +1,789 @@
+---
+title: "Bulk RNA-seq data analysis tutorial"
+author: "Nathan V Ribeiro - <n.v.ribeiro@umcg.nl>"
+
+date: now
+format: 
+  html:
+    toc-title: Content
+    toc: true
+    code-overflow: wrap
+    theme: cosmo
+    embed-resources: true
+editor: visual
+---
+
+## Introduction
+
+This tutorial is build on data from duodenal biopsies of active celiac disease, treated celiac disease, and control individuals, as described by [Aarón Ramírez-Sánchez et al. (2024)](https://www.biorxiv.org/content/10.1101/2024.02.29.582756v1). Here you will learn the basics on how to import RNA-seq data, explore the data, build contrasts, perform differential expression analysis, and gene set enrichment analysis. We will use the packages **edgeR** and **limma-voom** during this course. You can read more about them in detail here:
+
+-   edgeR user guide: <https://www.bioconductor.org/packages/devel/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf>
+
+-   limma user guide: <https://www.bioconductor.org/packages/devel/bioc/vignettes/limma/inst/doc/usersguide.pdf>
+
+------------------------------------------------------------------------
+
+## Initial set-up
+
+### Set working directory
+
+In this step, you set your working directory, that is, the folder in your computer where you are going to save your scripts, data and results.
+
+```{r setWD}
+#| output: false
+
+path <- '/Users/nvribeiro/Library/CloudStorage/OneDrive-UMCG/Desktop/PhD/Others/BMS-BigData-Course-2025' # you need to change this to your own path
+
+setwd(path)
+```
+
+### Load libraries
+
+If you haven't done, check the file "Preparation for data analysis – Big Data Course BMS 2025" and follow the instructions to install/update R, RStudio and the packages that you will used in the analysis. Then load the libraries.
+
+```{r loadLibs}
+#| output: false
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(knitr)
+library(stringr)
+library(patchwork)
+library(edgeR)
+library(clusterProfiler)
+library(enrichplot)
+library(org.Hs.eg.db)
+library(ReactomePA)
+library(viridis)
+library(ggrepel)
+library(purrr)
+library(biomaRt)
+library(pheatmap)
+library(RColorBrewer)
+library(reshape2)
+library(variancePartition)
+library(forcats)
+```
+
+```{r}
+# Optional: define a default theme to be used in all plots
+default_theme <- function(){
+  theme_bw() +
+    theme(panel.grid = element_blank(),
+          panel.border = element_rect(linewidth = 1),
+          axis.title = element_text(size = rel(1)),
+          axis.title.y.left = element_text(margin = margin(r = 10, unit = 'pt')),
+          axis.title.y.right = element_text(margin = margin(l = 10, unit = 'pt')),
+          axis.title.x.bottom = element_text(margin = margin(t = 10, unit = 'pt')),
+          plot.title = element_text(size = rel(1), hjust = 0.5, face = 'bold'),
+          axis.text = element_text(size = rel(1)),
+          axis.ticks.length = unit(5, 'pt'),
+          strip.background = element_rect(fill = "#f5a9a9", linewidth = 0),
+          strip.text = element_text(size = rel(1), color = "black")
+    )
+}
+```
+
+### Load the dataset
+
+Now we load the dataset that you have previously downloaded and saved in your "data" folder. This file contains the reads mapped to the gene annotation and thus contains the raw data with which we will work.
+
+```{r loadTable}
+counts <- read.table("data/RNA_matrix.table", header=TRUE)
+knitr::kable(head(counts))
+```
+
+We now have a dataframe where each row is a gene and each column is sample.
+
+### Preparing the metadata
+
+Differential expression analysis is the comparison of gene expression between one or more conditions while correcting for unwanted sources of variation. This information is usually stored in a metadata file, where you have many details about each sample such as condition, sex, age, etc. Here we load the metadata for this dataset.
+
+```{r colData}
+#| message: false
+
+metadata <- read.csv('data/metadata_oslo_biopsies.csv', header=TRUE)
+rownames(metadata) <- metadata$sample
+
+# Visualize the first rows
+knitr::kable(head(metadata))
+
+# Make sure that the colnames of your count table are matching with the row names of your colData
+# Both of the comparisons below need to return TRUE
+all(rownames(metadata) %in% colnames(counts)) # check if all samples in the metadata are present in the counts
+all(rownames(metadata) == colnames(counts)) # check if they are in the same order
+
+# In this case all samples are in counts and metadata, but they are not in the same order.
+# To put them in the same order we run
+counts <- counts[, rownames(metadata)]
+all(rownames(metadata) == colnames(counts)) # now this is TRUE
+```
+
+------------------------------------------------------------------------
+
+## Quality control and exploratory analysis
+
+Now we are going to create the edgeR object that will contain all the information about our experiment. We need to give the counts table, the matching metadata and a optional grouping factor (which we are not using in this case).
+
+```{r createObj}
+#| message: false
+
+y <- DGEList(counts = counts,
+            samples = metadata,
+            genes = rownames(counts))
+```
+
+### Remove poorly expressed genes
+
+As we sequenced this data set very deeply, a lot of noise is also captured, which is most prevalent in lowly expressed genes. To reduce the size of our data set and to make the differential expression analysis more robust by including only well-expressed genes that are more likely to be biologically informative, we will remove poorly expressed genes.
+
+First we visualize the counts in a histogram, this will give us an overview of the expression and we can try to decide a cutoff based on this graph. Here we are plotting the distribution of counts as log10 count-per-million (CPM).
+
+```{r removeGenes}
+#| message: false
+
+# Histogram of log(CPM)
+cpm <- cpm(y, log = TRUE)
+hist(cpm)
+
+# With the following lines we add arbitrary cut-offs to histogram
+# Cutoff of 10
+abline(v = log10(10), col = "blue",lwd = 2)
+# cutoff of 100
+abline(v = log10(100), col = "purple",lwd = 2)
+# cutoff of 500
+abline(v = log10(500), col = "red",lwd = 2)
+# cutoff of 1000
+abline(v = log10(1000), col = "orange",lwd = 2)
+```
+
+You will notice a bi-modal distribution, in which a large chunk of genes is barely expressed, and a smaller chuck is expressed much more. We see that the bump with highly expressed genes occurs after the purple line (100 counts), so we can use that as a cut-off or, if you want to focus only on the really highly expressed genes, 500 or 1000 counts. Here I chose 500.
+
+The function we will use to filter, `filterByExpr`, allows us to specify some parameters as the minimum counts required, if you want to filter per group, or use a formula.
+
+```{r Filter}
+keep <- filterByExpr(y,
+                    group = y$samples$condition, # considers the group when filtering - optional
+                    min.count = 500) # the number you decided based on the histogram above
+
+y_filtered <- y[keep, , keep.lib.sizes=FALSE]
+
+print(paste0("Number of genes before filtering: ", dim(y)[1]))
+print(paste0("Number of genes after filtering: ", dim(y_filtered)[1]))
+```
+
+We now reduced our dataset from 53,042 genes to 6,809. This will help speed up the calculations and only focus on genes that are expressed at high levels and probably more biologically relevant.
+
+### Principal component analysis (PCA)
+
+The PCA can help assess which samples are more closely related to each other, and how much variation is found between samples. We can also use PCA to check if other variables in our metadata are unwanted sources of variation that should be included in the model. To calculate the PCA, we use the logCPM counts.
+
+::: callout-tip
+If you are not familiar with PCA, watch this video: <https://www.youtube.com/watch?v=HMOI_lkzW08>
+:::
+
+```{r PCA}
+#| message: false
+
+# First define a function to make easier to plot the PCs. This function makes a PCA plot for the any PCs specified in "coord_1" and "coord_2" and will group the points (color) by a metadata column specified in "color_by". "coldata" is your metadata (stored in the "samples" part of the edgeR object)
+plotPC <- function(pca_obj, coldata, coord_1, coord_2, color_by) {
+
+  var_explained <- pca$sdev^2 / sum(pca$sdev^2)
+  var_explained_df <- tibble(PC = paste0('PC', seq_along(var_explained)),
+                             Var_Explained = var_explained)
+  
+  df <- as.data.frame(cbind(coldata, pca$x))
+  
+  x_label <- paste0(coord_1, ' (', round(var_explained_df$Var_Explained[var_explained_df$PC == coord_1]*100, digits = 2), '%)')
+  y_label <- paste0(coord_2, ' (', round(var_explained_df$Var_Explained[var_explained_df$PC == coord_2]*100, digits = 2), '%)')
+  
+  p <- ggplot(df, aes(x = !!sym(coord_1), y = !!sym(coord_2), color = as.factor(!!sym(color_by)))) +
+    geom_point(size = 3) +
+    scale_color_viridis_d() +
+    labs(x = x_label, y = y_label) +
+    default_theme()
+  
+  return(p)
+  
+}
+
+# The next function we define is to create a scree plot
+# Makes a Scree plot based on the PCA results, if n_pcs = NULL, plots all available PCs
+plotScree <- function(pca, n_pcs = NULL){
+  
+  if (is.null(n_pcs)){
+    n_pcs <- ncol(pca$x)
+  }
+  
+  # Extract variance explained
+  var_explained <- pca$sdev^2 / sum(pca$sdev^2)
+  cumulative_var <- cumsum(var_explained)
+  
+  # Create a data frame for plotting
+  plot_data <- data.frame(
+    PC = seq_along(var_explained),
+    Variance_Explained = var_explained,
+    Cumulative_Explained = cumulative_var
+  )
+  
+  plot_data <- plot_data[1:n_pcs,]
+  
+  # Plot
+  ggplot(plot_data, aes(x = factor(PC))) +
+    geom_bar(aes(y = Variance_Explained), stat = "identity", fill = "#22A884FF") +
+    geom_line(aes(y = Cumulative_Explained, group = 1), color = "#2A788EFF", linewidth = 1) +
+    geom_point(aes(y = Cumulative_Explained), color = "#2A788EFF", size = 2) +
+    scale_y_continuous(
+      name = "Fraction of Variance Explained",
+      sec.axis = sec_axis(~., name = "Cumulative Explained Variance"),
+      expand = c(0,0)
+    ) +
+    labs(
+      title = "Scree Plot",
+      x = "Principal Component",
+      y = "Fraction of Variance"
+    ) +
+    default_theme()
+  
+}
+
+# Now calculate the PCs and plot
+cpm <- cpm(y_filtered, log = TRUE)
+pca <- prcomp(t(cpm), scale. = TRUE)
+```
+
+First we can see how much variation is explained by the PCs using a scree plot. For example, we can see that the first 3 PCs already explain almost 60% of the variance, and after each PCs doesn't add too much to the variance. That means that if we see a variable having an effect in the first 3 PCs, it is probably a good idea to correct for that during the testing.
+
+```{r}
+#| fig.height: 5
+#| fig.width: 7
+
+plotScree(pca, n_pcs = 20)
+```
+
+Here you can see that the samples from controls (CTRL) and treated celiac disease (TCD) tend to cluster together and separated from the untreated celiac disease (UCD).
+
+```{r}
+#| fig.height: 6
+#| fig.width: 8
+
+# Plot the first 2 PCs colored by the condition
+plotPC(pca,
+      coldata = y_filtered$samples,
+      coord_1 = 'PC1',
+      coord_2 = 'PC2',
+      color_by = 'condition')
+```
+
+Here you can see that the samples from controls (CTRL) and treated celiac disease (TCD) tend to cluster together and separated from the untreated celiac disease (UCD). You can plot any other PCs and grouping variable you want to explore how that variable influences the data, for example, batch of sequencing that seems to be a significant source of variation:
+
+```{r}
+#| fig.height: 6
+#| fig.width: 8
+
+plotPC(pca,
+      coldata = y_filtered$samples,
+      coord_1 = 'PC1',
+      coord_2 = 'PC2',
+      color_by = 'batch.of.sequencing')
+```
+
+### Normalization of read counts
+
+In order to properly perform certain downstream analysis, such as principal component analysis (PCA), or clustering, we need to properly normalize the counts. This step adjusts the raw counts to account for technical variations that can mask true biological differences. These factors are things like sequencing depth, library sizes, gene length, and GC content. In edgeR, we normalize the counts using the trimmed mean M-values (TMM) method with the function `normLibSizes`
+
+```{r Normalize}
+#| message: false
+
+y_filtered <- calcNormFactors(y_filtered)
+```
+
+### Variance partition analysis (optional)
+
+Alternatively to the PCA, you can use a "Variance Partition analysis" to quantify and interpret the sources of biological and technical variation in your data. This uses the package `variancePartition`. This uses the TMM normalized counts and a formula with the variables from your metadata you want to check (more on models and formulas will be explained in future steps). You can investigate any variables you want at once here, instead of one by one as you would do in the PCA.
+
+```{r}
+#| fig.height: 8
+#| fig.width: 10
+
+# First we assess correlation between all pairs of variables
+form <- ~ condition + sex + age + batch.of.RNA.isolation + batch.of.sequencing + RNA.concentration + RIN.score + lib.size + cell.counts + H..pylori + marsh.score
+C <- canCorPairs(form, y_filtered$samples)
+plotCorrMatrix(C)
+```
+
+We see from this plot that GC content, RIN score, batch of isolation and batch of sequencing are all strongly correlated, so we don't want to include all of them in our model. Because batch of sequencing was also important in the PCA, let's use just that one.
+
+Now we are going to fit a model in the gene expression data to check how much each variable contributes to the variation, you can choose which variables to include based on the previous plot.
+
+```{r}
+#| fig.height: 6
+#| fig.width: 8
+
+design <- model.matrix(~condition, y_filtered$samples)
+v <- voom(y_filtered, design)
+
+# We need to scale some variables so they are all in the same scale and comparable
+y_filtered$samples$age <- scale(y_filtered$samples$age)
+y_filtered$samples$lib.size_scaled <- scale(y_filtered$samples$lib.size)
+y_filtered$samples$cell.counts_scaled <- scale(y_filtered$samples$cell.counts)
+
+# Categorical variables need to be specified with (1|variable)
+form <- ~ (1|condition) + (1|sex) + (1|batch.of.sequencing) + (1|H..pylori) + (1|marsh.score) + age + RNA.concentration + lib.size_scaled + cell.counts_scaled
+varPart <- fitExtractVarPartModel(v, form, y_filtered$samples)
+
+plotVarPart(varPart)
+```
+
+In this plot, we can see how much each variable contributes to the variance in the data (the model is fit for every gene, that's why you see a distribution). Quite some variance is explained by condition (and therefore also Marsh score, a measure of inflammation in CeD), as you would expect. Batch of sequencing, sex, age, and RNA concentration are all also some significant sources of variation that we could include in the model. However, we see that there is still a lot of variance left in the residuals - that means variance that is not being captured by any of the other variables in the model. This can happen for many reasons that we won't go into details here, but keep in mind that ideally you want a model where most of variance is explained by the variables in the model and you don't have much left in the residuals.
+
+------------------------------------------------------------------------
+
+## Differential expression analysis
+
+The definition of a differential expressed gene (DEG) usually depends on whether or not a particular gene is significantly (p-value = 0.05, after multiple testing correction) over or under expressed when compared to another class (can be different treatment, control, tissue etc,). Nevertheless, we can be a bit more strict in this definition, we could require either a lower p-value (such as 0.01, or 0.001), and require a certain difference of expression between the two conditions, this difference between two conditions can be interpreted as the log2 fold change: $log2FC = log2 (mean expression condition 1 /mean expression condition 2)$
+
+Now that we have looked at the data and seen what things may affect the expression of genes in there, we can start making a design matrix to do differential expression analysis. A design matrix is a table that represents your experimental setup in a mathematical form. It tells a statistical model which samples belong to which experimental groups, such as "diseased" vs. "healthy" and also how other variables (such as sex, age, etc.) affect the sample. For a more detailed explanation on how to design matrices for many types of experimental designs, [check this guide.](https://f1000research.com/articles/9-1444/v1)
+
+### Building a design matrix
+
+The first thing in you want to include in your design is of course the variable you are more interested on, for example here we want to find the genes that are differentially expressed because of `condition` . Next, you want to include your covariates: the variables that we identified above that influence the data but are not the object of our investigation, so we correct for them. You can write the formula for the design matrix in two ways - with or without intercept - and to do that we use the function `model.matrix` and a formula, which always starts with a `~` followed by your variables, for example `~ condition + sex + age`.
+
+#### Model with intercept
+
+Let's use a simple example where we are modeling the effect of `group` (disease or control), the design matrix can be created with `model.matrix(~group)`. This creates a model with intercept. The intercept is the reference level for `group`, in this case, "control". In this case, gene expression is modeled as `Y ~ a + Xb`, where Y is the expression, a is the intercept, X is 0 (control) or 1 (disease), and b represents how much the expression changes from the reference group. . When X = 0, Y = a, the expression for control. When X = 1, Y = a + b, the expression for disease. Below is a visual representation of how to interpret this.
+
+![](https://f1000research-files.f1000.com/manuscripts/30844/e0cd78d8-1ebb-48d6-a35c-007d3d42961c_figure5.gif)
+
+#### Model without intercept
+
+A design matrix without intercept is coded as `model.matrix(~0+group)`. This model is essentially the same as before, however now you have a term associated with group control and a term associated with group disease: `Y ~ aX1 + bX2`, where X1 is 1 for control and 0 for disease and X2 is 1 for disease and 0 for control.
+
+![](https://f1000research-files.f1000.com/manuscripts/30844/e0cd78d8-1ebb-48d6-a35c-007d3d42961c_figure6.gif)
+
+The result you get from both models is the same, but for experimental designs with more than 2 groups (like our data) and other complex designs, is easier to work with the model without intercept. That is because having one term for each group allows you to easily define the contrasts for exactly what you want to test and find the DEGs for.
+
+### Defining a contrast matrix
+
+Now that we have a model for the gene expression, we want to find the difference between the mean expression of the groups of interest. The difference in parameter estimates can be calculated using a contrast matrix via the makeContrast function. To specify your comparison of interest, use the columns from the design matrix, for example:
+
+``` r
+## DO NOT RUN ##
+design <- model.matrix(0+group)
+makeContrasts(groupSICK - groupHEALTHY, levels = colnames(design))
+```
+
+This will create the contrast to find the DEGs in sick vs healthy that we will use in the following steps. Note that this is only applicable when creating a design matrix **without intercept.** Back to our data, this is how we will define our design matrix and contrasts, including the covariates:
+
+```{r}
+
+# Here it is also important that the categorial variables are factors and the numerical variables are on the same scale
+y_filtered$samples$condition <- factor(y_filtered$samples$condition, levels = c('CTRL', 'TCD', 'UCD'))
+y_filtered$samples$batch.of.sequencing <- factor(y_filtered$samples$batch.of.sequencing)
+y_filtered$samples$sex <- factor(y_filtered$samples$sex)
+y_filtered$samples$RNA.concentration <- scale(y_filtered$samples$RNA.concentration)
+
+# The parameter data in model.matrix() is your metadata (y$samples)
+design <- model.matrix(~ 0 + condition + batch.of.sequencing + sex + RNA.concentration, data = y_filtered$samples)
+head(design)
+```
+
+Now we specify the comparisons we want to make. There are many possible combinations we can investigate here, for example: untreated celiac disease vs control, untreated celiac disease vs treated celiac disease, and so on... When working on your own analysis think about the biological questions you want to answer and define the contrasts accordingly.
+
+```{r}
+contrasts_matrix <- makeContrasts(
+    UCDvsCTRL = conditionUCD - conditionCTRL,
+    TCDvsCTRL = conditionTCD - conditionCTRL,
+    UCDvsTCD = conditionUCD - conditionTCD,
+    levels = colnames(design)
+)
+head(contrasts_matrix)
+```
+
+Now that we have our models and contrasts, we are finally ready to find the DEGs.
+
+### Fit the model and find DEGs
+
+In the following steps we perform the necessary steps to fit the model and extract the DEGs for the comparisons we want. The function `voom` transforms the raw counts and stabilized variance, so the data can be modeled with limma's linear model.
+
+```{r}
+#| fig.height: 6
+#| fig.width: 6
+
+v <- voom(y_filtered, design, plot=TRUE) # change to FALSE if you don't want the plot
+```
+
+The plot generated by `voom` is a diagnostic tool that visualizes the relationship between a gene's average expression and its variance. The plot above is a example of a good plot: it has a "smooth", downward-sloping trend line, showing that voom has captured the mean-variance relationship. A bad plot usually has "peaks" and looks irregular, suggesting there is a problem with the data, such as bad filtering of lowly expressed genes or technical issues.
+
+Now we fit the model to the voom-transformed data and extract the results.
+
+```{r}
+# Fit the model
+fit <- lmFit(v, design)
+fit2 <- contrasts.fit(fit, contrasts_matrix[, "UCDvsCTRL"]) # here is where you specify the contrast you want the results for
+fit2 <- eBayes(fit2)
+
+# Get the table with results
+res <- topTable(fit2, sort.by = "P", n = Inf) # this returns the table with the results for all the genes, ordered by p-value
+knitr::kable(head(res))
+```
+
+These are the results for just untreated celiac disease vs control. Instead of running the code above multiple times for each comparison, we can do this iterative for all comparisons.
+
+```{r}
+res_all <- list()
+for (x in colnames(contrasts_matrix)) {
+  
+  contr <- contrasts_matrix[, x]
+  
+  fit2 <- contrasts.fit(fit, contr)
+  fit2 <- eBayes(fit2)
+  res <- topTable(fit2, sort.by = "P", n = Inf)
+  res$Contrast <- x
+  res_all <- append(res_all, list(res))
+    
+}
+results <- list_rbind(res_all)
+knitr::kable(head(results))
+```
+
+This list have the genes with their Ensembl ID, to help with interpretation we will add the gene symbol and entrezid annotation before we continue.
+
+```{r}
+mart <- useEnsembl(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+genemap <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol", "entrezgene_id"),
+                 filters = "ensembl_gene_id",
+                 values = unique(results$genes),
+                 mart = mart)
+                        
+results <- left_join(results, genemap, by = join_by("genes" == "ensembl_gene_id"), relationship = 'many-to-many')
+knitr::kable(head(results))
+```
+
+We can also create a dataframe containing only the significant results. Here we are considering significant the genes with absolute log2FC \> 1 and adjusted p-value \< 0.05.
+
+```{r}
+results_significant <- results |>
+    dplyr::filter(abs(logFC > 1) & adj.P.Val < 0.05)
+
+# Save the results
+# Specify the path to the folder you want to save the results
+folder_path <- "results"
+
+# Check if the folder exists
+if (!dir.exists(folder_path)) {
+  # If it doesn't exist, create it
+  dir.create(folder_path)
+  cat(paste0("Folder '", folder_path, "' created successfully!\n"))
+} else {
+  cat(paste0("Folder '", folder_path, "' already exists.\n"))
+}
+
+write.csv(results, paste0(folder_path, "/DEG_results_biopsies_oslo.csv"), row.names=F)
+write.csv(results_significant, paste0(folder_path, "/DEG_results_biopsies_oslo_significant_only.csv"), row.names=F)
+```
+
+------------------------------------------------------------------------
+
+## Visualization
+
+### Volcano plot
+
+Now we can visualize the DEGs in a volcano plot, which plots the -log10(padj) against the fold change of the genes. This allows for easy identification of data points that show both significant changes and large magnitudes of change.
+
+```{r}
+# Define a function to make a volcano plot
+# Makes a volcano plot, highlighting the genes above the specified log2FC threshold and labels the top n genes (based on padj)
+VolcanoPlot <- function(res, threshold = 0.5, p_cutoff = 0.05, n_labels = 15, title = '') {
+    # Prepare the data
+  res_plot <- res |>
+    mutate(DE = case_when(
+      adj.P.Val < p_cutoff & logFC >= threshold ~ 'upregulated',
+      adj.P.Val < p_cutoff & logFC <= -threshold ~ 'downregulated',
+      adj.P.Val >= p_cutoff | abs(logFC) < threshold ~ 'not DE'
+    ))
+  
+  # Add label to the top n genes (ranked by FC)
+  n <- n_labels
+  
+  top_genes <- res_plot |> dplyr::filter(DE != 'not DE') |> 
+    group_by(sign(logFC)) |> 
+    top_n(n_labels, -log10(adj.P.Val)) |> 
+    pull(hgnc_symbol)
+  res_plot$genelabel <- ''
+  res_plot$genelabel[res_plot$hgnc_symbol %in% top_genes] <- res_plot$hgnc_symbol[res_plot$hgnc_symbol %in% top_genes]
+  
+  color_map <- c("not DE" = "gray", "downregulated" = "#2166ac", "upregulated" = "#b2182b")
+  
+  ggplot(res_plot, aes(x = logFC, y = -log10(adj.P.Val))) +
+    geom_point(aes(colour = DE), size = 1.5) +
+    geom_text_repel(aes(label = genelabel), min.segment.length = 0.25, force = 10) +
+    geom_hline(yintercept = -log10(p_cutoff), colour = '#696969', linetype = 'dashed') +
+    geom_vline(xintercept = -threshold, colour = '#696969', linetype = 'dashed') +
+    geom_vline(xintercept = threshold, colour = '#696969', linetype = 'dashed') +
+    scale_color_manual('', values = color_map) +
+    default_theme() +
+    theme(legend.text = element_text(size = rel(1.25))) +
+    labs(title = title,
+         x = 'log2 fold change',
+         y = '-log10 adjusted p-value')
+  
+}
+```
+
+Like before, we do this in a iterative way to make the volcano plots for all comparisons at the same time. You can change the log2FC `threshold` or the `p_cutoff` based on your cut-offs for a gene to be considered DE.
+
+```{r}
+#| fig.height: 8
+#| fig.width: 20
+
+volcanos <- list()
+for(c in unique(results$Contrast)) {
+    data <- dplyr::filter(results, Contrast == c)
+    p <- VolcanoPlot(data, threshold = 0.5, p_cutoff = 0.05, n_labels = 15, title = c)
+    volcanos <- append(volcanos, list(p))
+}
+wrap_plots(volcanos, guides = 'collect')
+```
+
+### Heatmap
+
+We can also visualize the DEGs in a heatmap. Heatmaps are color coded, graphical representations of a matrix. The rows and columns of this matrix can be arranged in a certain way to showcase the similarities between columns and rows. This arrangement of columns and rows can be used an unsupervised approach such as hierarchical clustering, which can be useful to find patterns in the data, such as cluster of genes that are down/up-regulated with similar magnitude. It is also useful to visualize the gene expression per sample. To create this plot we use the expression data as logCPM from the significant genes.
+
+```{r}
+#| fig-width: 10
+#| fig-height: 12
+
+# Choose a contrast to visualize
+contrast <- 'UCDvsCTRL'
+
+# Get the DEGs for this contrast
+de_genes <- results_significant$genes[results_significant$Contrast == contrast]
+
+# Get the logCPM counts for these genes
+cpm_de <- cpm(y_filtered, log = TRUE)
+cpm_de <- cpm_de[de_genes,]
+
+# Calculates z-score
+z <- t(scale(t(cpm_de)))
+
+# Create annotation dataframe for the heatmap - this can be whatever you want to show about the samples (columns)
+annotation_col <- y_filtered$samples[colnames(z), c('condition', 'marsh.score')]
+rownames(annotation_col) <- y_filtered$samples[colnames(z), 'sample']
+ann_colors <- list(
+    condition = c('CTRL' = '#29d3d6',
+                 'TCD' = '#29d62e',
+                 'UCD' = '#910a0a'),
+    marsh.score = c('n.m.' = '#FEE5D9',
+                   '0' = '#FCAE91',
+                   '1' = '#FB6A4A',
+                   '2' = '#DE2D26',
+                   '3' = '#A50F15'))
+
+# Make the heatmap with values scaled by row (genes), so you can compare between samples (columns)
+pheatmap(z, cluster_rows = T, show_rownames = F, show_colnames = F, border_color = NA,
+        color = colorRampPalette(rev(brewer.pal(n = 7, name = "RdBu")))(100),
+        annotation_col = annotation_col,
+        annotation_colors = ann_colors,
+        treeheight_col = FALSE)
+```
+
+### Data points
+
+In some cases it’s also useful to visualize the expression values for certain genes across all samples. Lets check for the top 10 DEGs between untreated celiacs and controls. Remember, in order to properly compare expression values across samples we need to use the normalized levels (in this case logCPM).
+
+```{r}
+#| fig-width: 12
+#| fig-height: 6
+
+# Select the top 10 genes (based on adj p-val) for UCDvsCTRL
+top10_genes <- results_significant |>
+    dplyr::filter(Contrast == 'UCDvsCTRL') |>
+    top_n(-10, adj.P.Val)
+
+# Get the cpm counts
+top10_cpm <- cpm(y_filtered, log=TRUE)
+top10_cpm <- as.data.frame(cpm[top10_genes$genes,])
+top10_cpm$symbol <- top10_genes$hgnc_symbol # add the gene symbol
+
+# Reshape the data so we can plot
+data_plot <- melt(top10_cpm)
+
+# Add sample information (condition)
+data_plot <- left_join(data_plot, y_filtered$samples[, c('sample', 'condition')], by = join_by("variable" == "sample"))
+
+top10_Plot <- ggplot(data_plot, aes(x = condition, y = value))+
+                geom_jitter(alpha=0.8)+
+                geom_boxplot(alpha=0.6)+
+                facet_grid(~symbol, scale="free")+
+                ylab("logCPM")+
+                xlab("")+
+                default_theme()+
+                theme(axis.text.x = element_text(angle=45, hjust = 1))
+top10_Plot
+```
+
+Now we have our DEGs and many ways to visualize them. But what do they do? How are they biologically relevant?
+
+Most of the times we have hundreds or thousands of DEGs, so it might be hard to look at them individually and check their function. To deal with that, we can do a pathway analysis to find if the DEGs are involved in common pathways that are enriched in the results.
+
+------------------------------------------------------------------------
+
+## Pathway analysis
+
+To find if our DEGs are enriched for a particular biological function we can use a **Over Representation Analysis (ORA)** or a **Gene Set Enrichment Analysis (GSEA)**. ORA is a method to find if known biological functions are over-represented in a given list of genes (e.g. DEGs), comparing to a background of all genes measures. A limitation of this method is that it doesn't take into account how much the expression of a gene changes (i.e. the log2 fold-change). GSEA, on the other hand, uses the log2 fold-change information to rank all genes and calculate an enrichment score that reflects how clustered the genes from a particular set are at the top (upregulated) or bottom (downregulated) of the ranked list. There are many tools and databases with gene biological function that you can use, in this tutorial we will use the package `clusterProfiler` and the databases gene ontology, KEGG, and Reactome.
+
+### Prepare the data
+
+Load the results from the DE analysis. Here let's use all genes that are significant (adj. p-value \< 0.05) but without filtering for the fold-change, so we can see how the results from ORA and GSEA will differ from each other. In your own analysis, you can set a fold-change cut-off as well if necessary. Besides, we need the Entrezid for most of the methods so we will filter out genes that don't have one.
+
+```{r}
+# Load the results and keep only the significant genes and remove genes without entrezid
+results <- read.csv('results/DEG_results_biopsies_oslo.csv')
+results_sig <- results |> 
+    filter(adj.P.Val < 0.05 & !is.na(entrezgene_id))
+```
+
+### Over Representation Analysis
+
+The function `compareCluster` allows us to run ORA for the three comparisons and two directions (up or downregulated) at the same time. The function needs a formula specifying how you want to run the comparison. To tell we want the analysis per contrast and for each direction in that contrast we use the formula `entrezgene_id ~ Contrast + direction`. In this analysis, you can also specify a "universe": a list of all genes that were tested in your analysis, to be used as a background. (This block of code might take a few minutes to run.)
+
+```{r message=FALSE}
+# Create a column with direction of DE
+results_sig$direction <- if_else(results_sig$logFC > 0, "upregulated", "downregulated")
+
+# Get the universe - all genes tested
+universe <- results |> filter(!is.na(entrezgene_id)) |> pull(entrezgene_id)
+
+# Run ORA using gene ontology biological process
+ora_go <- compareCluster(entrezgene_id ~ Contrast + direction,
+                        fun = 'enrichGO',
+                        universe = universe,
+                        ont = "BP",
+                        OrgDb = org.Hs.eg.db,
+                        data = results_sig,
+                        pvalueCutoff = 0.05,
+                        readable = TRUE)
+
+# Run ORA using KEGG Pathway
+ora_kegg <- compareCluster(entrezgene_id ~ Contrast + direction,
+                        fun = 'enrichKEGG',
+                        universe = universe,
+                        organism = "hsa",
+                        data = results_sig,
+                        pvalueCutoff = 0.05)
+
+# Run ORA using Reactome
+ora_reactome <- compareCluster(entrezgene_id ~ Contrast + direction,
+                        fun = 'enrichPathway',
+                        universe = universe,
+                        organism = "human",
+                        data = results_sig,
+                        pvalueCutoff = 0.05,
+                        readable = TRUE)
+```
+
+These objects contain a lot of information about the test and results. You can access the table with results with `@compareClusterResult`, for example:
+
+```{r}
+knitr::kable(head(ora_go@compareClusterResult))
+```
+
+You can visualize the results in many different ways, [check the documentation](https://yulab-smu.top/biomedical-knowledge-mining-book/enrichplot.html) of this package to see all options. For simplicity, we will plot only the dot plot here but explore other ways to visualize in your own analysis.
+
+```{r}
+#| fig-width: 10
+#| fig-height: 9
+dotplot(ora_go) +
+    default_theme() +
+    theme(axis.text.x = element_text(angle=45, hjust = 1))
+```
+
+### Gene Set Enrichment Analysis (GSEA)
+
+Because GSEA uses the log2 fold-change to rank the genes, we first need to prepare this input vector with genes ordered based on their fold-change. In this case, we will not use `compareCluster` to do everything all at once, instead we will use a custom function to prepare the data and run the analysis. We don't need the universe genes in this case.
+
+```{r}
+# Define the function to create the ranked gene list and run the analysis
+run_gsea <- function(data, contrast, database = c('GO-BP', 'KEGG', 'Reactome')) {
+
+  # Creates the ordered gene list for given contrast
+  foldchanges <- data$logFC[data$Contrast == contrast]
+  names(foldchanges) <- data$entrezgene_id[data$Contrast == contrast]
+  foldchanges <- sort(foldchanges, decreasing = TRUE)
+
+  # Run the analysis for given database
+  if(database == 'GO-BP') {
+    res <- gseGO(geneList = foldchanges, OrgDb = "org.Hs.eg.db", keyType = "ENTREZID", ont = "BP", pvalueCutoff = 0.05)
+  } else if(database == 'KEGG') {
+    res <- gseKEGG(geneList = foldchanges, organism = 'hsa', pvalueCutoff = 0.05)
+  } else if(database == 'Reactome') {
+    res <- gsePathway(geneList = foldchanges, organism = 'human', pvalueCutoff = 0.05)
+  } else {
+    print("Choose a database among GO-BP, KEGG or Reactome.")
+  }
+  return(res)
+
+}
+```
+
+Now apply the function to our contrasts. For simplicity, we will do only for GO-BP.
+
+```{r warning=FALSE}
+gsea_ucd_ctrl <- run_gsea(results_sig, contrast = 'UCDvsCTRL', database = 'GO-BP')
+gsea_ucd_tcd <- run_gsea(results_sig, contrast = 'UCDvsTCD', database = 'GO-BP')
+
+# Converts entrezid back to symbol
+gsea_ucd_ctrl <- setReadable(gsea_ucd_ctrl, org.Hs.eg.db)
+gsea_ucd_tcd <- setReadable(gsea_ucd_tcd, org.Hs.eg.db)
+```
+
+Similarly to ORA, we can check the results with `@result`. Note a column called `NES`, this is the **Normalized Enrichment Score** and the most important metric here to interpret the results. The NES is derived from the **enrichment score (ES)**, a value that reflects the degree to which a gene set is overrepresented at the top (upregulated, positive ES) or bottom (downregulated, negative ES) of a ranked gene list. This score is calculated by a "random walk" algorithm that increases a running sum when it encounters a gene from the set and decreases it otherwise. The final ES is the maximum deviation from zero during this walk.
+
+```{r}
+knitr::kable(head(gsea_ucd_ctrl))
+```
+
+Again, you can visualize the results in many ways. With the script below you can get an overview of the top 10 enriched pathways and the top 10 repressed pathways.
+
+```{r}
+#| fig-width: 10
+#| fig-height: 9
+
+data <- gsea_ucd_ctrl
+n <- 10
+
+data_plot <- arrange(as.data.frame(data@result), desc(abs(NES))) %>%
+    group_by(sign(NES)) %>%
+    dplyr::slice(1:n)
+
+ggplot(data_plot, showCategory = n*2,
+      aes(NES, fct_reorder(Description,NES), fill = -log10(p.adjust))) +
+geom_col() +
+geom_vline(xintercept = 0, colour = '#696969', linetype = 'dashed') +
+scale_fill_gradientn(colours=c("#b3eebe", "#46bac2", "#371ea3"),
+                      guide=guide_colorbar(reverse=TRUE)) +
+labs(x = 'Normalized Enrichment Score',
+     y = '') +
+default_theme() +
+theme(text = element_text(size = 11))
+```
+
+Another interesting way of visualizing the GSEA results is the "running score" plot. For a given pathway, this plot shows the position of the genes in the ranked list and the enrichment score.
+
+```{r}
+#| fig-width: 10
+#| fig-height: 6
+
+gseaplot(gsea_ucd_ctrl, geneSetID = 1, title = gsea_ucd_ctrl$Description[1])
+```
+
+Note the differences between the two methods, they won't always give you the same results. Keep the differences between the two methods in mind when doing your analysis and interpreting the results.
+
+Now that you are familiar with the basics of RNA-sequencing analysis, have fun analyzing the data you generated during the week in the lab :)
+
+------------------------------------------------------------------------
+
+```{r}
+sessionInfo()
+```
