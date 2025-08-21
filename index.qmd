@@ -1,0 +1,42 @@
+---
+title: "Welcome"
+format:
+  html:
+    toc-title: On this page
+    toc: true
+    code-overflow: wrap
+    embed-resources: true
+---
+
+Hello! In this webpage, you will find the information and tutorials you need to analyse your own RNA-sequencing data that you generated in the lab. We will walk you through the basic steps in the analysis of bulk RNA-sequencing data and single-cell RNA sequencing data. Before we get started, follow the instructions below to set everything up.
+
+# Install or update R and RStudio
+If you don’t have R and/or RStudio installed in your computer yet, download and install it following the instructions [here](https://posit.co/download/rstudio-desktop/){target="_blank"}. If you alredy have them installed, check if you need to update them (you can do this by opening RStudio and go to Help > Check for Updates and then install it if necessary). To ensure compability with the tutorials and codes you will use during the course, make sure to have installed R version 4.4.1 or higher.
+
+# Install packages
+The lines of code below will install the packages we will need during the analysis. Just copy them, paste into RStudio and execute. 
+
+```{r eval=FALSE}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install(version = "3.20")
+
+install.packages(c('dplyr', 'tidyr', 'ggplot2', 'knitr', 'stringr', 'patchwork', 'viridis', 'ggrepel', 'corrplot', 'purrr', 'pheatmap', 'RColorBrewer', 'reshape2', 'forcats', 'Seurat'))
+BiocManager::install(c('DESeq2', 'edgeR', 'clusterProfiler', 'org.Hs.eg.db', 'ReactomePA', 'variancePartition', 'biomaRt', 'enrichplot', 'MAST'))
+
+install.packages("devtools")
+devtools::install_github("immunogenomics/presto")
+```
+
+::: {.callout-warning}
+If you are using Windows and this is your first time using R, you might get an error saying you need to install rtools. If that happens, try following the instructions [here](https://stackoverflow.com/questions/59022977/rtools-is-required-to-build-r-packages-but-is-not-currently-installed){target="_blank"}.
+:::
+
+# Download tutorial datasets
+Create a folder in your computer where you are going to save the data, scripts and results of your analysis. Inside of this folder create a folder called “data”, download the file by clicking on the link below, and save the files in the "data" folder.
+
+::: {.callout-important}
+You need to be logged in your RUG account to download the files.
+:::
+
+[**Request download**](https://drive.google.com/drive/folders/1Sy4_at0ADkvJwQMUHYgeZ9jY--AxEL1h?usp=share_link){target="_blank"}

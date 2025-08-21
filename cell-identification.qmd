@@ -1,0 +1,78 @@
+---
+title: "Cell type identification"
+
+format: 
+  html:
+    toc-title: Content
+    toc: true
+    code-overflow: wrap
+    embed-resources: true
+    sidebar: false
+---
+
+## Introduction
+As you have seen already, what you get from single-cell RNA-seq is a matrix with RNA counts per cell with no information about what cell type they are. It's up to us to find that out. The two most common ways are 1) look at the expression of known marker genes, or 2) compare with a well-annotated reference. In this tutorial you will learn how to do the option 2 with a tool called [CellTypist](https://github.com/Teichlab/celltypist){target="_blank"}. This tool is based in Python, but don't worry you don't need to install anything. We can run this using Google Colab in your RUG account (more details on how to do that below).
+
+## Initial set-up
+Before we start, we need to export our dataset from a Seurat object in R to a AnnData object in Python. You should do this after running the "Pre-processing" steps, when you have your Seurat clusters ready. To convert your dataset to AnnData first you need to define a function in R that will save the files we need to create the object in Python.
+
+```{r}
+#| eval: FALSE
+SeuratToAnndata <- function(seurat_obj, name, path, assay = 'RNA', simple = FALSE) {
+  
+  if(simple == TRUE) {
+    write.csv(seurat_obj@meta.data, file=paste0(path, name, '_metadata.csv'), quote=F, row.names=F)
+  } else {
+    seurat_obj$barcode <- colnames(seurat_obj)
+    seurat_obj$UMAP_1 <- seurat_obj@reductions$umap@cell.embeddings[,1]
+    seurat_obj$UMAP_2 <- seurat_obj@reductions$umap@cell.embeddings[,2]
+    write.csv(seurat_obj@meta.data, file=paste0(path, name, '_metadata.csv'), quote=F, row.names=F)
+    
+    # write dimensionality reduction matrix, PCA or harmony
+    write.csv(seurat_obj@reductions$harmony@cell.embeddings, file=paste0(path, name, '_pca_harmony.csv'), quote=F, row.names=F)
+  }
+  
+  # write expression counts matrix
+  require(Matrix)
+  if(assay == 'RNA') {
+    counts_matrix <- GetAssayData(seurat_obj, assay='RNA', layer='counts')
+    writeMM(counts_matrix, file=paste0(path, name, '_RNA_counts.mtx'))
+  }
+  
+  if(assay == 'SCT') {
+    counts_matrix <- GetAssayData(seurat_obj, assay='SCT', layer='data')
+    writeMM(counts_matrix, file=paste0(path, name, '_SCT_logcounts.mtx'))
+  }
+  
+  # write gene names
+  write.table(
+    data.frame('gene'=rownames(counts_matrix)) ,file=paste0(path, name, '_gene_names.csv'),
+    quote=F,row.names=F,col.names=F
+  )
+  
+}
+```
+
+Here is an example of how you should use this function in R.
+
+```{r}
+#| eval: FALSE
+obj <- readRDS('data/SeuratObj_PreProcessed.rds')
+SeuratToAnndata(seurat_obj = obj,
+                name = 'My_Data', # choose the name of your file
+                path = 'data/', # the path where the files will be saved
+                assay = 'RNA', # saves the RNA information
+                simple = TRUE # doesn't save the PCA and UMAP information
+)
+```
+
+After running this, you should have three new files in the `data` folder: `My_Data_RNA_counts.mtx`, `My_Data_metadata.csv` and `My_Data_gene_names.csv`. You will need to upload these files to your RUG Google Drive, where we will run the Python script using Colab.
+
+## Using Google Colab
+Log into your Google Drive Account, create a folder to save your data and upload the three files created above in that folder. Now [click here](https://colab.research.google.com/drive/1B0EYCImoOoE-T5OmBV-6feBGSRQ8bBt2?usp=sharing){target="_blank"} to open the Colab Notebook, go to **File > Save a copy in Drive**. This will create a copy of the script in your own Drive, that you can edit and run. Follow the instructions in the Colab notebook to finish the creation of your AnnData object.
+
+## Identifying cell types with CellTypist
+[Click here](https://colab.research.google.com/drive/11bztWKKO0U6IEtyoc2HN0CDx5NwFOVg1?usp=sharing){target="_blank"} to acesss the Colab notebook with the instructions on how to use CellTypist. Like before, just go to **File > Save a copy in Drive** to copy the notebook to your Drive and make changes to the script.
+
+## Adding the cell type annotation to your Seurat object
+After completing the cell type classification with CellTypist, you should know which seurat clusters correspond to which cell types. You can now go back to R and add the cell type annotation like we did in the [tutorial](http://localhost:5333/scRNA-seq.html#identifying-the-clusters){target="_blank"}.

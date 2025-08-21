@@ -1,0 +1,339 @@
+---
+title: "Single-cell RNA-seq data analysis"
+
+format: 
+  html:
+    toc-title: Content
+    toc: true
+    code-overflow: wrap
+    embed-resources: true
+    sidebar: false
+---
+
+## Introduction
+
+Single-cell RNA-seq data analysis usually follows the steps shown in the figure below. The first step is the generation of the count matrices using the raw sequencing data. After that we start the quality control steps that can include removal of doublets, ambient RNA correction, and removal of low quality cells (i.e. high mitochondrial content (dying cells) and low number of reads (empty droplets)). Once we have a filtered and high quality dataset, we proceed to the pre-processing steps that include normalization, feature selection, dimensionality reduction, and clustering of the cells (explained with more details later).
+
+![**Overview of analysis steps for scRNA-seq.** *Heumos, L., Schaar, A.C., Lance, C. et al. Best practices for single-cell analysis across modalities. Nat Rev Genet 24, 550–572 (2023).*](https://media.springernature.com/full/springer-static/image/art%3A10.1038%2Fs41576-023-00586-w/MediaObjects/41576_2023_586_Fig2_HTML.png?)
+
+For the sake of simplicity and time, we will skip the quality control steps that precede any analysis done with scRNA-seq data. If you want to know more about the quality control steps you can check [here](https://satijalab.org/seurat/articles/pbmc3k_tutorial){target="_blank"} and [here](https://github.com/hbctraining/scRNA-seq_online/blob/master/lessons/04_SC_quality_control.md){target="_blank"}. Therefore, here we will use a dataset that has already been quality controlled and filtered.
+
+## Initial set-up
+
+### Set working directory
+
+In this step, you set your working directory, that is, the folder in your computer where you are going to save your scripts, data and results.
+
+```{r setWD}
+#| output: false
+
+path <- '/Users/nvribeiro/Library/CloudStorage/OneDrive-UMCG/Desktop/PhD/Others/BMS-BigData-Course-2025' # you need to change this to your own path
+
+setwd(path)
+```
+
+### Load libraries
+
+If you haven't done, check the file "Preparation for data analysis – Big Data Course BMS 2025" and follow the instructions to install/update R, RStudio and the packages that you will used in the analysis. Then load the libraries.
+
+```{r}
+#| output: false
+library(Seurat)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+library(stringr)
+library(MAST)
+library(ggrepel)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(enrichplot)
+library(knitr)
+library(presto)
+library(forcats)
+```
+
+```{r}
+# Optional: define a default theme to be used in all plots
+default_theme <- function(){
+  theme_bw() +
+    theme(panel.grid = element_blank(),
+          panel.border = element_rect(linewidth = 1),
+          axis.title = element_text(size = rel(1)),
+          axis.title.y.left = element_text(margin = margin(r = 10, unit = 'pt')),
+          axis.title.y.right = element_text(margin = margin(l = 10, unit = 'pt')),
+          axis.title.x.bottom = element_text(margin = margin(t = 10, unit = 'pt')),
+          plot.title = element_text(size = rel(1), hjust = 0.5, face = 'bold'),
+          axis.text = element_text(size = rel(1)),
+          axis.ticks.length = unit(5, 'pt'),
+          strip.background = element_rect(fill = "#f5a9a9", linewidth = 0),
+          strip.text = element_text(size = rel(1), color = "black")
+    )
+}
+```
+### Loading the tutorial data
+
+We will use a small subset of 10,000 single-cells from small intestine biopsies of pediatric samples from the [Gut Cell Atlas by Elmentaite at al. (2021)](https://www.nature.com/articles/s41586-021-03852-1){target="_blank"}. This dataset is included in the files you downloaded previously and is called "Elmentaite_2021_P_smallInt_BMS_tutorial.rds".
+
+```{r}
+obj <- readRDS("data/Elmentaite_2021_P_smallInt_BMS_tutorial.rds")
+obj
+```
+
+The code above loads the dataset and tells us that this is a Seurat object with 10,000 cells and 33,538 features (genes), and we are working with a RNA assay. Now we can start pre-processing this data and run some analysis.
+
+## Pre-processing
+
+Single-cell RNA-sequencing is prone to many different sources of variance, for example cells can have very different numbers of gene counts because of differences in the amount of mRNA present in them or purely randomly during the sequencing. **Normalization** of counts make the transcriptome profile of all cells comparable among them. During this process, you also want to remove unwanted sources of variation, for example genes involved in cell cycle or mitochondrial genes. If you want to know more about normalization, you can read [this](https://github.com/hbctraining/scRNA-seq_online/blob/master/lessons/06_SC_SCT_normalization.md){target="_blank"}.
+
+Moreover, the counts matrix is huge and sparse (contains a lot of zeros), which means that not every detected gene is biologically informative. The **features selection** step is useful to reduce the computational power required and make sure the analysis focus only on informative genes. These genes ideally explain the biological variation in the data by prioritizing genes the vary between subpopulations, instead of within a subpopulation. These genes are then used to perform **dimensionality reduction**, which in this case is a [principal component analysis (PCA)](https://www.youtube.com/watch?v=HMOI_lkzW08){target="_blank"}. Using the PCA dimensions, we can then group cells into clusters based on how similar they are in this multidimensional space and visualize them in a UMAP representation.
+
+The code below takes care of perform all the steps above. The resolution parameter in the function `FindClusters()` below is the one you need to pay more attention and adjust according to your dataset. A large value will lead to more clusters, and a small one, to fewer. The best way to guess the resolution parameter is to have some idea of how many cell types you expect in your sample based on the tissue you are working it, and then try different values until you find one that gives you a reasonable number of clusters. In this case, we are working with small intestine, a tissue with many different cell types, so we expect to have many different clusters. In the original publication, they have hundreds of different cell types but because we are working only with a small subset of the data and a low resolution to speed thing up a bit, so we will have much less.
+
+```{r}
+options(future.globals.maxSize = 8000 * 1024^2)
+
+obj <- obj %>% 
+  NormalizeData() %>%
+  FindVariableFeatures() %>%
+  ScaleData(vars.to.regress = "pct_counts_mt") %>% # Regresses out the percentage of mitochondrial RNA
+  RunPCA() %>%
+  FindNeighbors(dims = 1:50) %>%
+  FindClusters(resolution = 0.3) %>%
+  RunUMAP(dims = 1:50)
+
+DimPlot(obj, reduction = "umap")
+```
+
+### Inspecting the clustering
+
+Large experiments usually are done in batches and that can be a cofounder that we don't want to include in our analysis. If there is a strong batch effect, cells from the same cell type will cluster together based on their batch and not on their true identity. A quick way to check if you have a strong batch effect in your data is to plot the UMAP above but colored (or split) by batch. (You can also do this with any other variable that you have in your metadata)
+
+```{r}
+DimPlot(obj, reduction = "umap", group.by = "batch")
+
+# If you want to try the split version, un-comment (delete the '#") and run the line below
+# DimPlot(obj, reduction = "umap", split.by = "batch") + NoLegend()
+```
+
+### Identifying the clusters
+
+Since we don't see major batch effects, we can continue our analysis. Now, we want to identify the clusters. What cell types are they? To answer this question, we need to find the genes that define each cluster, or **marker genes**. These are genes that are differentially expressed in that cluster specifically when compared to all other cells. This is done using the code below. The function `FindAllMarkers()` performs a differential expression testing for each clusters versus all other cells, therefore, it might take a few minutes to run, depending on your computer's specs. (You can skip this step if it takes too long or if your machine can't handle it and go to to the cell identification step).
+
+```{r}
+#| output: false
+
+marker_genes <- FindAllMarkers(obj, 
+                               only.pos = TRUE, # return only the positive differentially expressed genes
+                               min.pct = 0.1, # only test genes that are detected in at least 10% of the cells in either cluster
+                               logfc.threshold = 0.25) # the logFC of a gene between the two groups has to be at least 0.25
+```
+
+This gives you a large table with all the results. To make it easier to look at the markers, let's reshape this and display only the top 10 most significant marker genes for each cluster.
+
+```{r}
+# Getting the top 10 markers per cluster based on p-val and FC
+top.markers <- marker_genes %>% 
+  group_by(cluster) %>%
+  filter(p_val_adj < 0.05) %>%
+  arrange(p_val_adj, by.group = TRUE) %>%
+  top_n(n = 10, wt = avg_log2FC)
+
+# Reshaping the table
+top.markers.clean <- top.markers %>%
+  dplyr::select(cluster, gene) %>%
+  group_by(cluster) %>%
+  summarise(markers = str_c(unlist(pick(gene)), collapse=', '))
+  
+knitr::kable(top.markers.clean)
+```
+
+With the table above and a reference gene markers list, or a very good knowledge of biology, or a lot of Googling, you can identify each cluster. Luckly for us, this dataset already has the cell type annotated in the metadata, so we will use that to help us. Let's first see how the clusters are distributed in the original cell type annotation.
+
+```{r}
+#| fig-height: 11
+#| fig-width: 7
+
+ggplot(obj@meta.data, aes(x = seurat_clusters, y = cell_type)) +
+  geom_count() +
+  theme_classic()
+```
+
+As mentioned above, we have way less clusters and they are not as good defined as in the original publication, because we are working with just a small part of it. So, we are adding the following simplified annotation based on the overlap seen in the plot above:
+
+| Seurat cluster    | Cell type         |
+|-------------------|-------------------|
+| 0, 9, 12          | B cells           |
+| 1                 | Activated T cells |
+| 2                 | Enterocytes       |
+| 3                 | T cells           |
+| 4, 14, 15, 16, 18 | Stromal cells     |
+| 5, 7, 13          | Plasma cells      |
+| 8                 | Macrophages       |
+| 6                 | Stem and TA cells |
+| 10                | Goblet cells      |
+| 19                | Mast cells        |
+| 11                | Endothelial cells |
+| 17                | Glia              |
+| 20                | EECs              |
+
+We will add this new cell type annotation as a new column in the metadata called *cell_type_new*. Then, we can visualize the UMAP with this new annotation.
+
+```{r}
+#| fig-height: 8
+#| fig-width: 10
+
+obj@meta.data <- obj@meta.data %>%
+  mutate(cell_type_new = case_when(
+    seurat_clusters %in% c(0,9,12) == TRUE ~ "B cells",
+    seurat_clusters %in% c(1) == TRUE ~ "Activated T cells",
+    seurat_clusters %in% c(2) == TRUE ~ "Enterocytes",
+    seurat_clusters %in% c(3) == TRUE ~ "T cells",
+    seurat_clusters %in% c(4, 14, 15, 16, 18) == TRUE ~ "Stromal cells",
+    seurat_clusters %in% c(5, 7, 13) == TRUE ~ "Plasma cells",
+    seurat_clusters %in% c(8) == TRUE ~ "Macrophages",
+    seurat_clusters %in% c(6) == TRUE ~ "Stem and TA cells",
+    seurat_clusters %in% c(10) == TRUE ~ "Goblet cells",
+    seurat_clusters %in% c(19) == TRUE ~ "Mast cells",
+    seurat_clusters %in% c(11) == TRUE ~ "Endothelial cells",
+    seurat_clusters %in% c(17) == TRUE ~ "Glia",
+    seurat_clusters %in% c(20) == TRUE ~ "EECs"
+  ))
+
+DimPlot(obj, group.by = "cell_type_new", label = T) + NoLegend() # this puts the labels in the plot instead of a legend on the side
+```
+
+Now that we have identified our cell types, we can perform some analysis.
+
+::::: {.callout-note}
+When you do your own analysis, you will have to actually identify the cell types yourself. To get help with that, check the "Cell type indentification" tutorial.
+:::
+
+## Downstream analyses
+
+### Differential expression analysis
+
+In this dataset we have samples from individuals with [Crohn's Disease](https://en.wikipedia.org/wiki/Crohn's_disease){target="_blank"} and healthy individuals, so we can investigate if there is a difference in gene expression of the cell types we identified because of an individual being sick. Let's first just check if cells are present in both conditions by plotting the UMAP split by condition.
+
+```{r}
+#| fig-height: 8
+#| fig-width: 12
+
+p <- DimPlot(obj, group.by = "cell_type_new", split.by = "Diagnosis")
+print(p)
+```
+
+Now we can start the differential testing. We are using a method called [MAST](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-015-0844-5){target="_blank"}, that has been shown to perform well in single-cell data and allows us to correct for covariates such as batch, sex, age, and the cellular detection rate (the fraction of genes that are detected/expressed in each cell).
+
+```{r}
+
+# Choose the cell type for that you want to test for
+cluster <- "Enterocytes"
+obj_test <- subset(obj, subset = cell_type_new == cluster)
+
+# Set the dataset to test control vs disease
+Idents(obj_test) <- "Diagnosis"
+
+# Calculating CDR (cellular detection rate) to add in the model and correct for it
+CDR <- scale(colSums(GetAssayData(obj_test, assay = "RNA", layer = "data") > 0))
+obj_test$CDR <- CDR
+
+# Finding DEGs - note how CDR is included in the model via the latent.vars parameter
+DEG <- FindMarkers(obj_test, ident.1 = 'Pediatric Crohn Disease', ident.2 = 'Pediatric healthy', test.use = 'MAST', logfc.threshold = 0,
+                       min.pct = 0.25, latent.vars = 'CDR')
+
+# Create a dummy variable for gene names - it will be useful for plotting
+DEG$gene <- rownames(DEG)
+
+# Add the classification if a gene is up or down regulated based on the defined cutoffs for log2FC and adjusted p-value
+DEG$DE <- NA
+
+threshold <- 0.5 # cutff for logFC
+
+DEG <- DEG %>%
+  mutate(DE = case_when(
+    p_val_adj < 0.05 & avg_log2FC > threshold ~ 'upregulated',
+    p_val_adj < 0.05 & avg_log2FC < -threshold ~ 'downregulated',
+    p_val_adj > 0.05 | abs(avg_log2FC) < threshold ~ 'not DE'),
+    DE_gene = if_else(DE=='not significant', NA, gene)
+    )
+
+# Order and print the most upregulated genes
+DEG <- DEG %>%
+  arrange(desc(avg_log2FC)) # to see the most downregulated genes, just remove the desc()
+
+knitr::kable(head(DEG))
+```
+
+We can now visualize the DEG results as a volcano plot and highlight some of the genes using the code below.
+
+```{r}
+#| fig-height: 6
+#| fig-width: 7
+
+color_map <- c("not DE" = "gray", "downregulated" = "#2166ac", "upregulated" = "#b2182b")
+
+ggplot(DEG, aes(x = avg_log2FC, y = -log10(p_val_adj), color = DE, label = gene)) +
+      geom_jitter() +
+      geom_text_repel(max.overlaps = 5, force = 30, show.legend = FALSE) + 
+      geom_hline(yintercept = -log10(0.05), colour = '#696969', linetype = 'dashed') +
+      geom_vline(xintercept = -threshold, colour = '#696969', linetype = 'dashed') +
+      geom_vline(xintercept = threshold, colour = '#696969', linetype = 'dashed') +
+      scale_color_manual('', values = color_map) +
+      labs(title = "DEGs in Enterocytes in Chron's Disease") +
+      default_theme()
+```
+
+### Pathway enrichment analysis
+
+The next question we can ask is if the up or downregulated genes are involved in common functions, like we did in the bulk RNA-seq analysis. To keep it simple, we will do just a GSEA here, but during your analysis, feel free to try the other methods, the idea is the same.
+
+```{r}
+#| output: false
+
+# Create the rannked gene list required for the function, this will be the DEGs ordered by log2FC
+geneList_df <- DEG %>%
+  filter(DE != "not significant") %>%
+  dplyr::select(gene, avg_log2FC, p_val_adj) %>%
+  arrange(desc(avg_log2FC))
+
+geneList <- geneList_df$avg_log2FC
+names(geneList) <- geneList_df$gene
+  
+gsea <- gseGO(
+  geneList = geneList,
+  OrgDb = org.Hs.eg.db,
+  ont = "BP", 
+  keyType = "SYMBOL",
+  minGSSize = 10,
+  pvalueCutoff = 0.05
+)
+```
+
+This returns an object with the results that we can inspect with `head(gsea@result)`. Although this table is good to inspect the results in detail, it is not a great way to visualize the results. For that, we can plot the most significant enriched and suppressed pathways. (In this case we only have significant suppressed pathways, so the plot will only have those, but you get the idea).
+
+```{r}
+#| fig-height: 5
+#| fig-width: 8
+
+# This gets the top 5 enriched and supressed pathways based on the Normalized Enrichment Score (NES)
+tmp <- arrange(gsea, desc(abs(NES))) %>%
+  group_by(sign(NES)) %>%
+  slice(1:5)
+
+# Now we plot them
+ggplot(tmp, showCategory = 10,
+       aes(NES, fct_reorder(Description,NES), fill = -log10(p.adjust))) +
+  geom_col() +
+  geom_vline(xintercept = 0, colour = '#696969', linetype = 'dashed') +
+  scale_fill_gradientn(colours=c("#b3eebe", "#46bac2", "#371ea3"),
+                        guide=guide_colorbar(reverse=TRUE)) +
+  labs(x = 'Normalized Enrichment Score',
+      y = '') +
+  default_theme() +
+  theme(text = element_text(size = 11))
+```
+
+## Conclusion
+This covers the basics of pre-processing a single-cell RNA-seq dataset and doing some downstream analysis to answer biological questions. Feel free to play with this code and try some different clustering parameter, use different cell types for the differential testing, etc. When you feel ready, run your own analysis with the assignment dataset.

@@ -1,0 +1,22 @@
+.navbar .dropdown-menu {
+  /* Background color for the dropdown container */
+  background-color: #158cba !important; 
+}
+
+.navbar .dropdown-menu .dropdown-item {
+  /* Font color for the dropdown items */
+  color: #ecf0f1 !important; /* A light off-white color */
+}
+
+.navbar .dropdown-menu .dropdown-item:hover,
+.navbar .dropdown-menu .dropdown-item:focus {
+  /* Style for when an item is hovered or focused */
+  background-color: #34495e !important; /* Slightly lighter dark blue/gray on hover */
+  color: #ffffff !important; /* Pure white text on hover */
+}
+
+.navbar .dropdown-menu .dropdown-item.active {
+  /* Style for the active dropdown item, if applicable */
+  background-color: #3498db !important; /* A noticeable blue for active item */
+  color: #ffffff !important;
+}

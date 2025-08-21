@@ -1,3 +1,35 @@
 project:
   type: website
   output-dir: docs
+
+website:
+  title: "From Big Data to Personalized Medicine"
+  navbar: 
+    background: primary
+    search: true
+    left:
+      - text: "Home"
+        href: index.qmd
+      - sidebar:tutorials
+    
+  sidebar:
+    - id: tutorials
+      title: "Tutorials"
+      style: "docked"
+      collapse-level: 2
+      contents:
+        - Bulk_RNAseq_Tutorial.qmd
+        - scRNA-seq.qmd
+        - cell-identification.qmd
+    
+  page-footer:
+    left: "This page was built by Nathan V Ribeiro with [Quarto](https://quarto.org)."
+    right: "UMCG - Immunogenetics Group"
+    background: primary
+    border: false
+
+format:
+  html:
+    theme: lumen
+    toc: true
+    css: custom.scss

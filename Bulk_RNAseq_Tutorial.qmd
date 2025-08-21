@@ -1,27 +1,18 @@
 ---
-title: "Bulk RNA-seq data analysis tutorial"
-author: "Nathan V Ribeiro - <n.v.ribeiro@umcg.nl>"
+title: "Bulk RNA-seq data analysis"
 
-date: now
 format: 
   html:
     toc-title: Content
     toc: true
     code-overflow: wrap
-    theme: cosmo
     embed-resources: true
-editor: visual
+    sidebar: false
 ---
 
 ## Introduction
 
-This tutorial is build on data from duodenal biopsies of active celiac disease, treated celiac disease, and control individuals, as described by [Aarón Ramírez-Sánchez et al. (2024)](https://www.biorxiv.org/content/10.1101/2024.02.29.582756v1). Here you will learn the basics on how to import RNA-seq data, explore the data, build contrasts, perform differential expression analysis, and gene set enrichment analysis. We will use the packages **edgeR** and **limma-voom** during this course. You can read more about them in detail here:
-
--   edgeR user guide: <https://www.bioconductor.org/packages/devel/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf>
-
--   limma user guide: <https://www.bioconductor.org/packages/devel/bioc/vignettes/limma/inst/doc/usersguide.pdf>
-
-------------------------------------------------------------------------
+This tutorial is build on data from duodenal biopsies of active celiac disease, treated celiac disease, and control individuals, as described by [Aarón Ramírez-Sánchez et al. (2024)](https://www.biorxiv.org/content/10.1101/2024.02.29.582756v1){target="_blank"}. Here you will learn the basics on how to import RNA-seq data, explore the data, build contrasts, perform differential expression analysis, and gene set enrichment analysis.
 
 ## Initial set-up
 
@@ -119,7 +110,6 @@ counts <- counts[, rownames(metadata)]
 all(rownames(metadata) == colnames(counts)) # now this is TRUE
 ```
 
-------------------------------------------------------------------------
 
 ## Quality control and exploratory analysis
 
@@ -179,7 +169,7 @@ We now reduced our dataset from 53,042 genes to 6,809. This will help speed up t
 The PCA can help assess which samples are more closely related to each other, and how much variation is found between samples. We can also use PCA to check if other variables in our metadata are unwanted sources of variation that should be included in the model. To calculate the PCA, we use the logCPM counts.
 
 ::: callout-tip
-If you are not familiar with PCA, watch this video: <https://www.youtube.com/watch?v=HMOI_lkzW08>
+If you are not familiar with PCA, watch this video: <https://www.youtube.com/watch?v=HMOI_lkzW08>{target="_blank"}
 :::
 
 ```{r PCA}
@@ -337,13 +327,11 @@ plotVarPart(varPart)
 
 In this plot, we can see how much each variable contributes to the variance in the data (the model is fit for every gene, that's why you see a distribution). Quite some variance is explained by condition (and therefore also Marsh score, a measure of inflammation in CeD), as you would expect. Batch of sequencing, sex, age, and RNA concentration are all also some significant sources of variation that we could include in the model. However, we see that there is still a lot of variance left in the residuals - that means variance that is not being captured by any of the other variables in the model. This can happen for many reasons that we won't go into details here, but keep in mind that ideally you want a model where most of variance is explained by the variables in the model and you don't have much left in the residuals.
 
-------------------------------------------------------------------------
-
 ## Differential expression analysis
 
 The definition of a differential expressed gene (DEG) usually depends on whether or not a particular gene is significantly (p-value = 0.05, after multiple testing correction) over or under expressed when compared to another class (can be different treatment, control, tissue etc,). Nevertheless, we can be a bit more strict in this definition, we could require either a lower p-value (such as 0.01, or 0.001), and require a certain difference of expression between the two conditions, this difference between two conditions can be interpreted as the log2 fold change: $log2FC = log2 (mean expression condition 1 /mean expression condition 2)$
 
-Now that we have looked at the data and seen what things may affect the expression of genes in there, we can start making a design matrix to do differential expression analysis. A design matrix is a table that represents your experimental setup in a mathematical form. It tells a statistical model which samples belong to which experimental groups, such as "diseased" vs. "healthy" and also how other variables (such as sex, age, etc.) affect the sample. For a more detailed explanation on how to design matrices for many types of experimental designs, [check this guide.](https://f1000research.com/articles/9-1444/v1)
+Now that we have looked at the data and seen what things may affect the expression of genes in there, we can start making a design matrix to do differential expression analysis. A design matrix is a table that represents your experimental setup in a mathematical form. It tells a statistical model which samples belong to which experimental groups, such as "diseased" vs. "healthy" and also how other variables (such as sex, age, etc.) affect the sample. For a more detailed explanation on how to design matrices for many types of experimental designs, [check this guide.](https://f1000research.com/articles/9-1444/v1){target="_blank"}
 
 ### Building a design matrix
 
@@ -482,8 +470,6 @@ if (!dir.exists(folder_path)) {
 write.csv(results, paste0(folder_path, "/DEG_results_biopsies_oslo.csv"), row.names=F)
 write.csv(results_significant, paste0(folder_path, "/DEG_results_biopsies_oslo_significant_only.csv"), row.names=F)
 ```
-
-------------------------------------------------------------------------
 
 ## Visualization
 
@@ -627,8 +613,6 @@ Now we have our DEGs and many ways to visualize them. But what do they do? How a
 
 Most of the times we have hundreds or thousands of DEGs, so it might be hard to look at them individually and check their function. To deal with that, we can do a pathway analysis to find if the DEGs are involved in common pathways that are enriched in the results.
 
-------------------------------------------------------------------------
-
 ## Pathway analysis
 
 To find if our DEGs are enriched for a particular biological function we can use a **Over Representation Analysis (ORA)** or a **Gene Set Enrichment Analysis (GSEA)**. ORA is a method to find if known biological functions are over-represented in a given list of genes (e.g. DEGs), comparing to a background of all genes measures. A limitation of this method is that it doesn't take into account how much the expression of a gene changes (i.e. the log2 fold-change). GSEA, on the other hand, uses the log2 fold-change information to rank all genes and calculate an enrichment score that reflects how clustered the genes from a particular set are at the top (upregulated) or bottom (downregulated) of the ranked list. There are many tools and databases with gene biological function that you can use, in this tutorial we will use the package `clusterProfiler` and the databases gene ontology, KEGG, and Reactome.
@@ -689,7 +673,7 @@ These objects contain a lot of information about the test and results. You can a
 knitr::kable(head(ora_go@compareClusterResult))
 ```
 
-You can visualize the results in many different ways, [check the documentation](https://yulab-smu.top/biomedical-knowledge-mining-book/enrichplot.html) of this package to see all options. For simplicity, we will plot only the dot plot here but explore other ways to visualize in your own analysis.
+You can visualize the results in many different ways, [check the documentation](https://yulab-smu.top/biomedical-knowledge-mining-book/enrichplot.html){target="_blank"} of this package to see all options. For simplicity, we will plot only the dot plot here but explore other ways to visualize in your own analysis.
 
 ```{r}
 #| fig-width: 10
@@ -780,10 +764,17 @@ gseaplot(gsea_ucd_ctrl, geneSetID = 1, title = gsea_ucd_ctrl$Description[1])
 
 Note the differences between the two methods, they won't always give you the same results. Keep the differences between the two methods in mind when doing your analysis and interpreting the results.
 
-Now that you are familiar with the basics of RNA-sequencing analysis, have fun analyzing the data you generated during the week in the lab :)
-
-------------------------------------------------------------------------
+::::: {.callout-tip}
+It might be the case that you get a lot of significant pathways that are very similar to each other (just a different name for the same thing), which makes it hard to identify different biological processes that are enriched. If that happens, you can simplify the results using the following function:
 
 ```{r}
-sessionInfo()
+#| eval: FALSE
+simplified <- pairwise_termsim(gsea)
+simplified <- simplify(simplified)
 ```
+
+You can then use this object instead for plotting the most significant results.
+:::
+
+## Conclusion
+Now that you are familiar with the basics of RNA-sequencing analysis, have fun analyzing the data you generated during the week in the lab :)
