@@ -75,4 +75,4 @@ Log into your Google Drive Account, create a folder to save your data and upload
 [Click here](https://colab.research.google.com/drive/11bztWKKO0U6IEtyoc2HN0CDx5NwFOVg1?usp=sharing){target="_blank"} to acesss the Colab notebook with the instructions on how to use CellTypist. Like before, just go to **File > Save a copy in Drive** to copy the notebook to your Drive and make changes to the script.
 
 ## Adding the cell type annotation to your Seurat object
-After completing the cell type classification with CellTypist, you should know which seurat clusters correspond to which cell types. You can now go back to R and add the cell type annotation like we did in the [tutorial](http://localhost:5333/scRNA-seq.html#identifying-the-clusters){target="_blank"}.
+After completing the cell type classification with CellTypist, you should know which seurat clusters correspond to which cell types. You can now go back to R and add the cell type annotation like we did in the single-cell tutorial.
