@@ -3950,7 +3950,7 @@ vertical-align: -.125em;
 </section>
 <section id="initial-set-up" class="level2">
 <h2 class="anchored" data-anchor-id="initial-set-up">Initial set-up</h2>
-<p>Before we start, we need to export our dataset from a Seurat object in R to a AnnData object in Python. You should do this after running the “Pre-processing” steps, when you have your Seurat clusters ready. To convert your dataset to AnnDatam first, in R you will run the following code.</p>
+<p>Before we start, we need to export our dataset from a Seurat object in R to a AnnData object in Python. You should do this after running the “Pre-processing” steps, when you have your Seurat clusters ready. To convert your dataset to AnnData first you need to define a function in R that will save the files we need to create the object in Python.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>SeuratToAnndata <span class="ot">&lt;-</span> <span class="cf">function</span>(seurat_obj, name, path, <span class="at">assay =</span> <span class="st">&#39;RNA&#39;</span>, <span class="at">simple =</span> <span class="cn">FALSE</span>) {</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  </span>
@@ -4000,7 +4000,7 @@ vertical-align: -.125em;
 </section>
 <section id="using-google-colab" class="level2">
 <h2 class="anchored" data-anchor-id="using-google-colab">Using Google Colab</h2>
-<p>Log into your Google Drive Account, create a folder to save your data and upload the three files created above in that folder. Now (click here)[https://colab.research.google.com/drive/1B0EYCImoOoE-T5OmBV-6feBGSRQ8bBt2?usp=sharing] to open the Colab Notebook, go to <strong>File &gt; Save a copy in Drive</strong>. This will create a copy of the script in your own Drive, that you can edit and run. Follow the instructions in the Colab notebook to finish the creation of your AnnData object.</p>
+<p>Log into your Google Drive Account, create a folder to save your data and upload the three files created above in that folder. Now <a href="https://colab.research.google.com/drive/1B0EYCImoOoE-T5OmBV-6feBGSRQ8bBt2?usp=sharing" target="_blank">click here</a> to open the Colab Notebook, go to <strong>File &gt; Save a copy in Drive</strong>. This will create a copy of the script in your own Drive, that you can edit and run. Follow the instructions in the Colab notebook to finish the creation of your AnnData object.</p>
 </section>
 <section id="identifying-cell-types-with-celltypist" class="level2">
 <h2 class="anchored" data-anchor-id="identifying-cell-types-with-celltypist">Identifying cell types with CellTypist</h2>
@@ -4008,7 +4008,7 @@ vertical-align: -.125em;
 </section>
 <section id="adding-the-cell-type-annotation-to-your-seurat-object" class="level2">
 <h2 class="anchored" data-anchor-id="adding-the-cell-type-annotation-to-your-seurat-object">Adding the cell type annotation to your Seurat object</h2>
-<p>After completing the cell type classification with CellTypist, you should know which seurat clusters correspond to which cell types. You can now go back to R and add the cell type annotation like we did in the <a href="http://localhost:5333/scRNA-seq.html#identifying-the-clusters">turorial</a>.</p>
+<p>After completing the cell type classification with CellTypist, you should know which seurat clusters correspond to which cell types. You can now go back to R and add the cell type annotation like we did in the <a href="http://localhost:5333/scRNA-seq.html#identifying-the-clusters" target="_blank">tutorial</a>.</p>
 
 
 </section>
