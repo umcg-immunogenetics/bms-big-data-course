@@ -1,6 +1,9 @@
 project:
   type: website
   output-dir: docs
+  render:
+    - "*.qmd"
+    - "!data-analysis-2025/"
 
 website:
   title: "From Big Data to Personalized Medicine"

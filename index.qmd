@@ -6,6 +6,9 @@ format:
     toc: true
     code-overflow: wrap
     embed-resources: true
+    
+execute:
+  freeze: auto  # re-render only when source changes
 ---
 
 Hello! In this webpage, you will find the information and tutorials you need to analyse your own RNA-sequencing data that you generated in the lab. We will walk you through the basic steps in the analysis of bulk RNA-sequencing data and single-cell RNA sequencing data. Before we get started, follow the instructions below to set everything up.

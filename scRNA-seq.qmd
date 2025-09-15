@@ -8,6 +8,9 @@ format:
     code-overflow: wrap
     embed-resources: true
     sidebar: false
+
+execute:
+  freeze: auto  # re-render only when source changes
 ---
 
 ## Introduction
