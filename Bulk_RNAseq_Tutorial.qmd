@@ -156,7 +156,7 @@ The function we will use to filter, `filterByExpr`, allows us to specify some pa
 ```{r Filter}
 keep <- filterByExpr(y,
                     group = y$samples$condition, # considers the group when filtering - optional
-                    min.count = 500) # the number you decided based on the histogram above
+                    min.total.count = 500) # the number you decided based on the histogram above - that is the minimal total numner of counts a gene needs to have across all samples
 
 y_filtered <- y[keep, , keep.lib.sizes=FALSE]
 
