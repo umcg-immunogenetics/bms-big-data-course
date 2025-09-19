@@ -259,7 +259,7 @@ DEG <- DEG %>%
     p_val_adj < 0.05 & avg_log2FC > threshold ~ 'upregulated',
     p_val_adj < 0.05 & avg_log2FC < -threshold ~ 'downregulated',
     p_val_adj > 0.05 | abs(avg_log2FC) < threshold ~ 'not DE'),
-    DE_gene = if_else(DE=='not significant', NA, gene)
+    DE_gene = if_else(DE=='not DE', NA, gene)
     )
 
 # Order and print the most upregulated genes
@@ -297,7 +297,7 @@ The next question we can ask is if the up or downregulated genes are involved in
 
 # Create the rannked gene list required for the function, this will be the DEGs ordered by log2FC
 geneList_df <- DEG %>%
-  filter(DE != "not significant") %>%
+  filter(DE != "not DE") %>%
   dplyr::select(gene, avg_log2FC, p_val_adj) %>%
   arrange(desc(avg_log2FC))
 

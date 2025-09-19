@@ -60,7 +60,11 @@ Here is an example of how you should use this function in R.
 
 ```{r}
 #| eval: FALSE
-obj <- readRDS('data/SeuratObj_PreProcessed.rds')
+
+# Make sure that there is a barcode column in your metadata
+obj$barcode <- colnames(obj)
+
+# Example of how to use the function
 SeuratToAnndata(seurat_obj = obj,
                 name = 'My_Data', # choose the name of your file
                 path = 'data/', # the path where the files will be saved

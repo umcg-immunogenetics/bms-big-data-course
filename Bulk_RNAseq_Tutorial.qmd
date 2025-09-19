@@ -164,7 +164,7 @@ print(paste0("Number of genes before filtering: ", dim(y)[1]))
 print(paste0("Number of genes after filtering: ", dim(y_filtered)[1]))
 ```
 
-We now reduced our dataset from 53,042 genes to 6,809. This will help speed up the calculations and only focus on genes that are expressed at high levels and probably more biologically relevant.
+We now reduced our dataset from 53,042 genes to around 18,000. This will help speed up the calculations and only focus on genes that are expressed at high levels and probably more biologically relevant.
 
 ### Principal component analysis (PCA)
 
@@ -282,7 +282,7 @@ plotPC(pca,
 
 ### Normalization of read counts
 
-In order to properly perform certain downstream analysis, such as principal component analysis (PCA), or clustering, we need to properly normalize the counts. This step adjusts the raw counts to account for technical variations that can mask true biological differences. These factors are things like sequencing depth, library sizes, gene length, and GC content. In edgeR, we normalize the counts using the trimmed mean M-values (TMM) method with the function `normLibSizes`
+In order to properly perform certain downstream analysis, such as principal component analysis (PCA), or clustering, we need to properly normalize the counts. This step adjusts the raw counts to account for technical variations that can mask true biological differences. These factors are things like sequencing depth, library sizes, gene length, and GC content. In edgeR, we normalize the counts using the trimmed mean M-values (TMM) method with the function `calcNormFactors`
 
 ```{r Normalize}
 #| message: false
@@ -454,7 +454,7 @@ We can also create a dataframe containing only the significant results. Here we 
 
 ```{r}
 results_significant <- results |>
-    dplyr::filter(abs(logFC > 1) & adj.P.Val < 0.05)
+    dplyr::filter(abs(logFC) > 1 & adj.P.Val < 0.05)
 
 # Save the results
 # Specify the path to the folder you want to save the results

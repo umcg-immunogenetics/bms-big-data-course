@@ -3,7 +3,7 @@ project:
   output-dir: docs
   render:
     - "*.qmd"
-    - "!data-analysis-2025/"
+    - "!data-analysis-2025/solved-practice-no-sex.qmd"
 
 website:
   title: "From Big Data to Personalized Medicine"

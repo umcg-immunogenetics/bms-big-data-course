@@ -3988,13 +3988,16 @@ vertical-align: -.125em;
 </div>
 <p>Here is an example of how you should use this function in R.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>obj <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="st">&#39;data/SeuratObj_PreProcessed.rds&#39;</span>)</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="fu">SeuratToAnndata</span>(<span class="at">seurat_obj =</span> obj,</span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>                <span class="at">name =</span> <span class="st">&#39;My_Data&#39;</span>, <span class="co"># choose the name of your file</span></span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>                <span class="at">path =</span> <span class="st">&#39;data/&#39;</span>, <span class="co"># the path where the files will be saved</span></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>                <span class="at">assay =</span> <span class="st">&#39;RNA&#39;</span>, <span class="co"># saves the RNA information</span></span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>                <span class="at">simple =</span> <span class="cn">TRUE</span> <span class="co"># doesn&#39;t save the PCA and UMAP information</span></span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Make sure that there is a barcode column in your metadata</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>obj<span class="sc">$</span>barcode <span class="ot">&lt;-</span> <span class="fu">colnames</span>(obj)</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Example of how to use the function</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="fu">SeuratToAnndata</span>(<span class="at">seurat_obj =</span> obj,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>                <span class="at">name =</span> <span class="st">&#39;My_Data&#39;</span>, <span class="co"># choose the name of your file</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>                <span class="at">path =</span> <span class="st">&#39;data/&#39;</span>, <span class="co"># the path where the files will be saved</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>                <span class="at">assay =</span> <span class="st">&#39;RNA&#39;</span>, <span class="co"># saves the RNA information</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>                <span class="at">simple =</span> <span class="cn">TRUE</span> <span class="co"># doesn&#39;t save the PCA and UMAP information</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>After running this, you should have three new files in the <code>data</code> folder: <code>My_Data_RNA_counts.mtx</code>, <code>My_Data_metadata.csv</code> and <code>My_Data_gene_names.csv</code>. You will need to upload these files to your RUG Google Drive, where we will run the Python script using Colab.</p>
 </section>
